@@ -1,0 +1,19 @@
+# Core Data Science Libraries
+pandas>=1.5.0
+numpy>=1.21.0
+scikit-learn>=1.1.0
+
+# Machine Learning Framework
+lightgbm>=3.3.0
+
+# Web Framework
+streamlit>=1.25.0
+
+# AI Integration
+google-generativeai>=0.3.0
+
+# Hyperparameter Optimization (Optional)
+optuna>=3.0.0
+
+# Additional Utilities
+python-dateutil>=2.8.0 
