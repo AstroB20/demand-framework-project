@@ -55,15 +55,117 @@ def ask_gemini_for_column_mapping_from_sample(df_sample, api_key):
 def gemini_suggest_lgbm_param_ranges(df_sample, selected_features, api_key):
     sample_csv = df_sample[selected_features + ['sales']].to_csv(index=False)
     n_rows = len(df_sample)
-    prompt = (
-        f"You are a data scientist. Here is a sample of the data (as CSV):\n{sample_csv}\n\n"
-        f"The sample has {n_rows} rows.\n"
-        f"Given the selected features: {selected_features}, suggest a valid Python dictionary of LightGBM hyperparameter ranges for a regression task.\n"
-        "These ranges will be used for Bayesian optimization (Optuna) to maximize forecasting accuracy.\n"
-        "Please suggest tight, realistic ranges (not too wide, not too narrow) based on the data and typical LightGBM usage.\n"
-        "For each hyperparameter, provide a list or tuple of reasonable values to try (e.g., 'num_leaves': [15, 31, 63], 'learning_rate': [0.01, 0.05, 0.1]). "
-        "Return only a valid Python dictionary, no explanations, no markdown, no code blocks, and do not truncate the output."
-    )
+    n_features = len(selected_features)
+    
+    # Analyze data characteristics
+    sales_stats = df_sample['sales'].describe()
+    sales_range = sales_stats['max'] - sales_stats['min']
+    sales_std = sales_stats['std']
+    has_zeros = (df_sample['sales'] == 0).sum() > 0
+    zero_ratio = (df_sample['sales'] == 0).mean()
+    
+    # Determine data size category
+    if n_rows < 1000:
+        size_category = "small"
+        max_leaves_factor = 0.5
+        min_data_factor = 2
+    elif n_rows < 10000:
+        size_category = "medium"
+        max_leaves_factor = 0.7
+        min_data_factor = 1.5
+    else:
+        size_category = "large"
+        max_leaves_factor = 1.0
+        min_data_factor = 1.0
+    
+    # Calculate coefficient of variation safely
+    cv = sales_std/sales_stats['mean'] if sales_stats['mean'] > 0 else float('nan')
+    cv_str = f"{cv:.2f}" if not np.isnan(cv) else "N/A"
+    
+    prompt = f"""You are an expert data scientist specializing in sales forecasting with LightGBM. Analyze this sales data and suggest optimal hyperparameter ranges for Bayesian optimization.
+
+**DATA ANALYSIS:**
+- Dataset size: {n_rows} rows, {n_features} features ({size_category} dataset)
+- Sales statistics: min={sales_stats['min']:.2f}, max={sales_stats['max']:.2f}, mean={sales_stats['mean']:.2f}, std={sales_stats['std']:.2f}
+- Sales range: {sales_range:.2f}, coefficient of variation: {cv_str}
+- Zero sales ratio: {zero_ratio:.1%} {'(sparse data - consider higher regularization)' if zero_ratio > 0.3 else ''}
+
+**FEATURES:**
+{selected_features}
+
+**SALES FORECASTING CONTEXT:**
+- This is a time series regression problem with potential seasonality and trends
+- Sales data often has high variance and may contain outliers
+- Need to balance between capturing patterns and avoiding overfitting
+- Computational efficiency matters for production deployment
+
+**HYPERPARAMETER GUIDANCE:**
+
+1. **num_leaves**: Controls tree complexity. For {size_category} datasets:
+   - Small datasets: 15-63 (prevent overfitting)
+   - Medium datasets: 31-127 (balance complexity)
+   - Large datasets: 63-255 (capture patterns)
+   - Consider: {int(31 * max_leaves_factor)}-{int(127 * max_leaves_factor)}
+
+2. **learning_rate**: Critical for convergence and generalization:
+   - Start conservative: 0.01-0.1 (better generalization)
+   - For noisy data: 0.005-0.05 (more stable)
+   - For clean patterns: 0.05-0.2 (faster convergence)
+
+3. **n_estimators**: Number of boosting rounds:
+   - Small datasets: 100-500
+   - Medium datasets: 200-1000
+   - Large datasets: 500-2000
+   - Higher for lower learning rates
+
+4. **min_data_in_leaf**: Prevents overfitting on small samples:
+   - Small datasets: 10-50
+   - Medium datasets: 20-100
+   - Large datasets: 50-200
+   - Consider: {int(20 * min_data_factor)}-{int(100 * min_data_factor)}
+
+5. **feature_fraction**: Reduces overfitting, especially with many features:
+   - Few features (<20): 0.8-1.0
+   - Many features (20-50): 0.6-0.9
+   - Many features (>50): 0.5-0.8
+
+6. **bagging_fraction**: Subsampling for regularization:
+   - Small datasets: 0.7-0.9
+   - Medium/Large datasets: 0.6-0.8
+
+7. **lambda_l1/lambda_l2**: Regularization strength:
+   - For sparse data (high zero ratio): 0.1-1.0
+   - For dense data: 0.01-0.1
+   - L1 for feature selection, L2 for general regularization
+
+8. **max_depth**: Tree depth limit:
+   - Conservative: 6-10
+   - Balanced: 8-15
+   - Aggressive: 12-20
+
+**SPECIFIC RECOMMENDATIONS FOR THIS DATA:**
+- Dataset size suggests {size_category} category parameters
+- {'High' if zero_ratio > 0.3 else 'Moderate'} sparsity suggests {'stronger' if zero_ratio > 0.3 else 'moderate'} regularization
+- {'High' if cv > 1 else 'Moderate'} variance suggests {'conservative' if cv > 1 else 'balanced'} learning rates
+
+**OUTPUT FORMAT:**
+Return ONLY a valid Python dictionary with hyperparameter ranges suitable for Optuna optimization.
+Use lists for categorical parameters, tuples for numeric ranges.
+Example format:
+{{
+    'num_leaves': [31, 63, 127],
+    'learning_rate': [0.01, 0.05, 0.1],
+    'n_estimators': [200, 500, 1000],
+    'min_data_in_leaf': [20, 50, 100],
+    'feature_fraction': [0.7, 0.8, 0.9],
+    'bagging_fraction': [0.7, 0.8, 0.9],
+    'lambda_l1': [0.01, 0.1, 0.5],
+    'lambda_l2': [0.01, 0.1, 0.5],
+    'max_depth': [8, 12, 16]
+}}
+
+**CRITICAL:** Return only the dictionary, no explanations, no markdown, no code blocks."""
+    
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(MODEL_NAME)
     for attempt in range(MAX_RETRIES):
@@ -503,6 +605,7 @@ else:
     use_gemini_selection = False
     use_gemini_params = False
 
+
 st.sidebar.header("1. Upload Data")
 uploaded_file = st.sidebar.file_uploader("Upload your sales data CSV", type=["csv"])
 
@@ -590,10 +693,10 @@ if uploaded_file is not None:
         all_feature_cols = [col for col in feature_list if col in train_features.columns]
         
         # Debug: Show all available features
-        st.write("## 🔍 DEBUG: All Available Features")
-        st.write(f"**Total Features:** {len(all_feature_cols)}")
+        # st.write("## 🔍 DEBUG: All Available Features")
+        # st.write(f"**Total Features:** {len(all_feature_cols)}")
         
-        # Categorize features
+        # Categorize features (keep for internal use, but don't print)
         original_numeric = [f for f in all_feature_cols if f.startswith('orig_') and not f.endswith('_encoded')]
         original_categorical = [f for f in all_feature_cols if f.startswith('orig_') and f.endswith('_encoded')]
         lag_features = [f for f in all_feature_cols if f.startswith('sales_lag_')]
@@ -603,54 +706,12 @@ if uploaded_file is not None:
         expanding_features = [f for f in all_feature_cols if f.startswith('sales_expanding') or f.startswith('sales_price_ratio')]
         other_features = [f for f in all_feature_cols if f not in original_numeric + original_categorical + lag_features + rolling_features + calendar_features + trigonometric_features + expanding_features]
         
-        # Display feature breakdown
-        col1, col2 = st.columns(2)
+        # Show a brief summary of feature categories
+        st.write(f"**Feature summary:** {len(all_feature_cols)} total features, including lag, rolling, calendar, and original columns.")
         
-        with col1:
-            st.write("**📊 Feature Categories:**")
-            st.write(f"• Original Numeric: {len(original_numeric)}")
-            st.write(f"• Original Categorical (Encoded): {len(original_categorical)}")
-            st.write(f"• Lag Features: {len(lag_features)}")
-            st.write(f"• Rolling Features: {len(rolling_features)}")
-            st.write(f"• Calendar Features: {len(calendar_features)}")
-            st.write(f"• Trigonometric Features: {len(trigonometric_features)}")
-            st.write(f"• Expanding Features: {len(expanding_features)}")
-            st.write(f"• Other Features: {len(other_features)}")
-        
-        with col2:
-            st.write("**📋 Sample Features by Category:**")
-            if original_numeric:
-                st.write(f"• Numeric: {original_numeric[:3]}{'...' if len(original_numeric) > 3 else ''}")
-            if original_categorical:
-                st.write(f"• Categorical: {original_categorical[:3]}{'...' if len(original_categorical) > 3 else ''}")
-            if lag_features:
-                st.write(f"• Lags: {lag_features[:3]}{'...' if len(lag_features) > 3 else ''}")
-            if rolling_features:
-                st.write(f"• Rolling: {rolling_features[:3]}{'...' if len(rolling_features) > 3 else ''}")
-        
-        # Show all features in expandable section
-        with st.expander("🔍 View ALL Features (Click to expand)"):
-            st.write("**Complete Feature List:**")
-            for i, feature in enumerate(all_feature_cols, 1):
-                category = ""
-                if feature in original_numeric:
-                    category = " (Original Numeric)"
-                elif feature in original_categorical:
-                    category = " (Original Categorical)"
-                elif feature in lag_features:
-                    category = " (Lag)"
-                elif feature in rolling_features:
-                    category = " (Rolling)"
-                elif feature in calendar_features:
-                    category = " (Calendar)"
-                elif feature in trigonometric_features:
-                    category = " (Trigonometric)"
-                elif feature in expanding_features:
-                    category = " (Expanding)"
-                else:
-                    category = " (Other)"
-                
-                st.write(f"{i:2d}. {feature}{category}")
+        # Show a small sample of features in an expander (optional, less verbose)
+        with st.expander("View sample features", expanded=False):
+            st.write(all_feature_cols[:10])
         
         # Show data sample with features
         st.write("**📈 Sample Data with Features (First 5 rows):**")
@@ -667,31 +728,46 @@ if uploaded_file is not None:
 
         # Prepare Gemini-pruned feature set if available
         valid_selected_features = []
-        if use_gemini_selection and GEMINI_API_KEY:
-            st.info("🤖 Using Gemini for intelligent feature selection...")
+        # --- Dynamic Feature Count Selection ---
+        # Calculate cumulative importance and select features covering at least 95% of total importance
+        feature_importance_df = None
+        dynamic_selected_features = []
+        if len(all_feature_cols) > 0:
             quick_model = LGBMRegressor(n_estimators=50, random_state=42, verbose=-1)
             quick_model.fit(train_features[all_feature_cols], train_features['sales'])
             feature_importance_df = pd.DataFrame({
                 'Feature': all_feature_cols,
                 'Importance': quick_model.feature_importances_
             }).sort_values('Importance', ascending=False)
+            feature_importance_df['Cumulative'] = feature_importance_df['Importance'].cumsum() / feature_importance_df['Importance'].sum()
+            threshold = 0.95
+            dynamic_selected_features = feature_importance_df[feature_importance_df['Cumulative'] <= threshold]['Feature'].tolist()
+            min_features = 10
+            if len(dynamic_selected_features) < min_features:
+                dynamic_selected_features = feature_importance_df['Feature'].head(min_features).tolist()
+            st.write(f"**Dynamic Feature Selection:** {len(dynamic_selected_features)} features cover 95% of total importance.")
+            with st.expander("View dynamically selected features", expanded=False):
+                st.write(dynamic_selected_features)
+        # --- Gemini selection (if enabled) ---
+        if use_gemini_selection and GEMINI_API_KEY and feature_importance_df is not None:
+            st.info("🤖 Using Gemini for intelligent feature selection...")
             st.write("**Feature Importance Ranking:**")
             st.dataframe(feature_importance_df.head(20))
             selected_features = gemini_select_best_features(feature_importance_df, GEMINI_API_KEY)
             if selected_features:
-                valid_selected_features = [f for f in selected_features if f in all_feature_cols]
+                valid_selected_features = [f for f in selected_features if f in dynamic_selected_features]
                 if len(valid_selected_features) >= 10:
-                    st.success(f"✅ Gemini selected {len(valid_selected_features)} features")
+                    st.success(f"✅ Gemini selected {len(valid_selected_features)} features (from dynamic set)")
                     st.write(f"**Selected Features:** {valid_selected_features}")
                 else:
-                    st.warning("⚠️ Gemini selected too few valid features, skipping Gemini-pruned model")
-                    valid_selected_features = []
+                    st.warning("⚠️ Gemini selected too few valid features, using dynamic set instead")
+                    valid_selected_features = dynamic_selected_features
             else:
-                st.warning("⚠️ Gemini feature selection failed, skipping Gemini-pruned model")
-                valid_selected_features = []
+                st.warning("⚠️ Gemini feature selection failed, using dynamic set instead")
+                valid_selected_features = dynamic_selected_features
         else:
-            st.info("🔧 Gemini feature selection not enabled or API key missing")
-            valid_selected_features = []
+            st.info("🔧 Gemini feature selection not enabled or API key missing; using dynamic set")
+            valid_selected_features = dynamic_selected_features
 
         # Set LightGBM parameters (either from Gemini/Optuna or default)
         if use_gemini_params and GEMINI_API_KEY:
@@ -763,7 +839,7 @@ if uploaded_file is not None:
         
         # For log-transformed and original models, always use all features
         st.info(f"✅ Ready to train with {len(all_feature_cols)} features (all features model)")
-        st.write("All features used for all-features model:", all_feature_cols)
+        # st.write("All features used for all-features model:", all_feature_cols)
         
         # Model 1: Original target (all features)
         st.write("### Training Model 1: Original Target (All Features)")
@@ -781,9 +857,8 @@ if uploaded_file is not None:
         y_pred_original = model_original.predict(X_test_all, num_iteration=model_original.best_iteration)
         mse_original = mean_squared_error(y_test, y_pred_original)
         rmse_original = np.sqrt(mse_original)
-        r2_original = r2_score(y_test, y_pred_original)
-        st.success(f"Model 1 (Original, All Features) - Test MSE: {mse_original:.4f}, RMSE: {rmse_original:.4f}, R²: {r2_original:.4f}")
-        st.write("Features used for prediction (all features model):", X_test_all.columns.tolist())
+        # r2_original = r2_score(y_test, y_pred_original)
+        st.success(f"Model 1 (Original, All Features) - Test MSE: {mse_original:.4f}, RMSE: {rmse_original:.4f}")
         
         # Model 2: Log-transformed target (all features)
         st.write("### Training Model 2: Log-Transformed Target (All Features)")
@@ -805,20 +880,19 @@ if uploaded_file is not None:
         y_pred_log_transformed = np.expm1(y_pred_log)
         mse_log = mean_squared_error(y_test, y_pred_log_transformed)
         rmse_log = np.sqrt(mse_log)
-        r2_log = r2_score(y_test, y_pred_log_transformed)
-        st.success(f"Model 2 (Log-Transformed, All Features) - Test MSE: {mse_log:.4f}, RMSE: {rmse_log:.4f}, R²: {r2_log:.4f}")
-        st.write("Features used for prediction (log-transformed model):", X_test_all.columns.tolist())
+        # r2_log = r2_score(y_test, y_pred_log_transformed)
+        st.success(f"Model 2 (Log-Transformed, All Features) - Test MSE: {mse_log:.4f}, RMSE: {rmse_log:.4f}")
         
         # Model 3: Gemini-Pruned Features (if enabled and successful)
         gemini_model_trained = False
         if valid_selected_features:
             st.write("Gemini-pruned features used for training:", valid_selected_features)
             st.write("Number of Gemini-pruned features:", len(valid_selected_features))
-            st.write("All features (original):", all_feature_cols)
-            st.write("Number of all features:", len(all_feature_cols))
-            st.write("Are feature sets identical?", set(valid_selected_features) == set(all_feature_cols))
-            st.write("Features in all but not in Gemini-pruned:", list(set(all_feature_cols) - set(valid_selected_features)))
-            st.write("Features in Gemini-pruned but not in all:", list(set(valid_selected_features) - set(all_feature_cols)))
+            # st.write("All features (original):", all_feature_cols)
+            # st.write("Number of all features:", len(all_feature_cols))
+            # st.write("Are feature sets identical?", set(valid_selected_features) == set(all_feature_cols))
+            # st.write("Features in all but not in Gemini-pruned:", list(set(all_feature_cols) - set(valid_selected_features)))
+            # st.write("Features in Gemini-pruned but not in all:", list(set(valid_selected_features) - set(all_feature_cols)))
             X_train_gemini = train_features[valid_selected_features]
             X_val_gemini = val_features[valid_selected_features]
             X_test_gemini = test_features[valid_selected_features]
@@ -836,34 +910,31 @@ if uploaded_file is not None:
             y_pred_gemini = model_gemini.predict(X_test_gemini, num_iteration=model_gemini.best_iteration)
             mse_gemini = mean_squared_error(y_test, y_pred_gemini)
             rmse_gemini = np.sqrt(mse_gemini)
-            r2_gemini = r2_score(y_test, y_pred_gemini)
-            st.success(f"Model 3 (Gemini-Pruned Features) - Test MSE: {mse_gemini:.4f}, RMSE: {rmse_gemini:.4f}, R²: {r2_gemini:.4f}")
-            st.write("Features used for prediction (Gemini-pruned model):", X_test_gemini.columns.tolist())
+            # r2_gemini = r2_score(y_test, y_pred_gemini)
+            st.success(f"Model 3 (Gemini-Pruned Features) - Test MSE: {mse_gemini:.4f}, RMSE: {rmse_gemini:.4f}")
             gemini_model_trained = True
         
         # Model Comparison
         st.write("### Model Comparison")
         model_results = {
-            'Original Target (All Features)': {'MSE': mse_original, 'RMSE': rmse_original, 'R²': r2_original},
-            'Log-Transformed Target (All Features)': {'MSE': mse_log, 'RMSE': rmse_log, 'R²': r2_log},
+            'Original Target (All Features)': {'MSE': mse_original, 'RMSE': rmse_original},
+            'Log-Transformed Target (All Features)': {'MSE': mse_log, 'RMSE': rmse_log},
         }
         if gemini_model_trained:
-            model_results['Gemini-Pruned Features'] = {'MSE': mse_gemini, 'RMSE': rmse_gemini, 'R²': r2_gemini}
+            model_results['Gemini-Pruned Features'] = {'MSE': mse_gemini, 'RMSE': rmse_gemini}
         
         comparison_df = pd.DataFrame({
             'Model': list(model_results.keys()),
             'Test MSE': [model_results[model]['MSE'] for model in model_results.keys()],
-            'Test RMSE': [model_results[model]['RMSE'] for model in model_results.keys()],
-            'R² Score': [model_results[model]['R²'] for model in model_results.keys()]
+            'Test RMSE': [model_results[model]['RMSE'] for model in model_results.keys()]
         })
         st.dataframe(comparison_df)
         
-        # Select best model based on R² score (higher is better)
-        best_model_name = max(model_results, key=lambda x: model_results[x]['R²'])
+        # Select best model based on RMSE (lower is better)
+        best_model_name = min(model_results, key=lambda x: model_results[x]['RMSE'])
         best_mse = model_results[best_model_name]['MSE']
         best_rmse = model_results[best_model_name]['RMSE']
-        best_r2 = model_results[best_model_name]['R²']
-        st.success(f"🏆 Best Model: {best_model_name} (MSE: {best_mse:.4f}, RMSE: {best_rmse:.4f}, R²: {best_r2:.4f})")
+        st.success(f"🏆 Best Model: {best_model_name} (MSE: {best_mse:.4f}, RMSE: {best_rmse:.4f})")
         
         # Select the best model for predictions
         if best_model_name == 'Original Target (All Features)':
@@ -917,7 +988,7 @@ if uploaded_file is not None:
         "Predict for specific store(s)",
         "Predict for specific item-store combination",
         "Show sample predictions for random items",
-        "Suggest top-selling products (next 2 months)"
+        "Suggest top-selling products (next 2 weeks)"
     ])
     all_predictions = []
     if prediction_mode == "Predict for specific item(s)":
@@ -1009,13 +1080,13 @@ if uploaded_file is not None:
                         'days': days,
                         'predictions': preds
                     })
-    elif prediction_mode == "Suggest top-selling products (next 2 months)":
+    elif prediction_mode == "Suggest top-selling products (next 2 weeks)":
         st.write("### 🏆 Top-Selling Products Analysis")
-        st.write("This will predict sales for all items over the next 2 months and rank them by total predicted sales.")
+        st.write("This will predict sales for all items over the next 2 weeks and rank them by total predicted sales.")
         
-        # User can specify time period (max 2 months = 60 days)
-        days = st.number_input("Forecast period (days)", min_value=1, max_value=60, value=60, 
-                              help="Maximum 2 months (60 days) as requested")
+        # User can specify time period (max 2 weeks = 14 days)
+        days = st.number_input("Forecast period (days)", min_value=1, max_value=14, value=14, 
+                              help="Maximum 2 weeks (14 days)")
         
         if st.button("Analyze Top-Selling Products"):
             with st.spinner("Predicting sales for all items..."):

@@ -21,9 +21,10 @@ This is a comprehensive sales forecasting application built with Streamlit that 
 
 - **Universal Data Handling**: Works with any CSV format through intelligent column mapping
 - **AI-Powered Automation**: Uses Google Gemini for column mapping, feature selection, and hyperparameter optimization
-- **Multiple Model Approaches**: Compares original target, log-transformed, and RFE-pruned models
+- **Multiple Model Approaches**: Compares original target, log-transformed, and AI-pruned models
 - **Interactive Predictions**: Supports various prediction modes (items, stores, combinations)
 - **Top-Selling Analysis**: Identifies best-performing products for strategic planning
+- **Advanced Hyperparameter Optimization**: Data-driven parameter tuning with domain-specific guidance
 
 ## 🏗️ Architecture & Data Flow
 
@@ -81,7 +82,7 @@ Feature Set → Multiple Models → Performance Comparison → Best Model Select
 
 1. **Original Target**: Direct sales prediction
 2. **Log-Transformed**: Log-transformed target for skewed distributions
-3. **RFE Pruned**: Recursive Feature Elimination for optimal feature subset
+3. **AI-Pruned**: Gemini-selected optimal feature subset
 
 #### 4. Prediction Generation
 
@@ -164,16 +165,33 @@ def smart_column_mapping(df):
 
 ### 4. Model Training System
 
-#### Hyperparameter Optimization
+#### Advanced Hyperparameter Optimization
 
 ```python
-# Gemini AI suggests parameter ranges
+# Data-driven hyperparameter range suggestion
 param_ranges = gemini_suggest_lgbm_param_ranges(df_sample, features, api_key)
 
 # Optuna performs Bayesian optimization
 study = optuna.create_study(direction='minimize')
 study.optimize(objective, n_trials=30)
 ```
+
+**Enhanced Hyperparameter Guidance:**
+
+The system now provides **data-driven hyperparameter optimization** with:
+
+- **Dataset Size Analysis**: Adapts parameters based on small/medium/large datasets
+- **Sales Statistics Analysis**: Considers mean, std, range, coefficient of variation
+- **Sparsity Detection**: Adjusts regularization based on zero sales ratio
+- **Domain-Specific Guidance**: Sales forecasting specific parameter recommendations
+- **Computational Efficiency**: Balances accuracy with training time
+
+**Parameter Categories:**
+
+1. **Tree Complexity**: `num_leaves`, `max_depth` (scaled by dataset size)
+2. **Learning Control**: `learning_rate`, `n_estimators` (based on data variance)
+3. **Regularization**: `min_data_in_leaf`, `lambda_l1`, `lambda_l2` (based on sparsity)
+4. **Sampling**: `feature_fraction`, `bagging_fraction` (based on feature count)
 
 #### Model Comparison Logic
 
@@ -182,7 +200,7 @@ study.optimize(objective, n_trials=30)
 models = {
     'Original': train_original_target(),
     'Log-Transformed': train_log_transformed(),
-    'RFE-Pruned': train_rfe_pruned()
+    'AI-Pruned': train_ai_pruned()
 }
 
 # Select best based on R² score
@@ -235,7 +253,7 @@ import streamlit as st
 #### AI Integration Functions
 
 - `ask_gemini_for_column_mapping_from_sample()`: Intelligent column mapping
-- `gemini_suggest_lgbm_param_ranges()`: Hyperparameter range suggestions
+- `gemini_suggest_lgbm_param_ranges()`: **Enhanced** data-driven hyperparameter optimization
 - `gemini_select_best_features()`: Feature importance analysis and selection
 
 #### Model Functions
@@ -281,7 +299,7 @@ df = df.fillna(0)  # or appropriate defaults
 
 - **Intelligent Column Mapping**: Gemini AI analyzes data structure
 - **Feature Selection**: AI-driven feature importance analysis
-- **Hyperparameter Optimization**: Automated parameter tuning
+- **Advanced Hyperparameter Optimization**: **Data-driven parameter tuning with domain-specific guidance**
 - **Business Logic Integration**: AI considers domain knowledge
 
 ### 3. Multiple Prediction Modes
@@ -417,7 +435,7 @@ response = model.generate_content(prompt)
 model_scores = {
     'Original': calculate_metrics(original_model),
     'Log-Transformed': calculate_metrics(log_model),
-    'RFE-Pruned': calculate_metrics(rfe_model)
+    'AI-Pruned': calculate_metrics(ai_pruned_model)
 }
 
 # Select best based on R² score
@@ -429,7 +447,7 @@ best_model = max(model_scores, key=lambda x: model_scores[x]['r2'])
 - **Early Stopping**: Prevents overfitting
 - **Cross-Validation**: Robust performance estimation
 - **Feature Selection**: Reduces noise and improves speed
-- **Hyperparameter Tuning**: Optimizes model configuration
+- **Advanced Hyperparameter Tuning**: **Data-driven optimization with domain-specific guidance**
 
 ## 🔧 Troubleshooting
 

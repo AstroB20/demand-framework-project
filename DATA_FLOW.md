@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document provides a detailed walkthrough of how data flows through the sales forecasting application, from raw CSV upload to final predictions.
+This document provides a detailed walkthrough of how data flows through the sales forecasting application, from raw CSV upload to final predictions, including **advanced data-driven hyperparameter optimization**.
 
 ## 1. Data Ingestion Phase
 
@@ -217,14 +217,14 @@ df['is_summer'] = df['month'].isin([6, 7, 8]).astype(int)
 df['is_winter'] = df['month'].isin([12, 1, 2]).astype(int)
 df['is_holiday_season'] = df['month'].isin([11, 12]).astype(int)
 
-# Trigonometric encoding for smooth seasonal transitions
+# Trigonometric features for smooth seasonal transitions
 df['month_sin'] = np.sin(2 * np.pi * df['month']/12)
 df['month_cos'] = np.cos(2 * np.pi * df['month']/12)
 df['dayofweek_sin'] = np.sin(2 * np.pi * df['dayofweek']/7)
 df['dayofweek_cos'] = np.cos(2 * np.pi * df['dayofweek']/7)
 ```
 
-**Purpose:** Capture seasonal patterns and cyclical behavior
+**Purpose:** Capture seasonal patterns and cyclical time effects
 
 ### 3.5 Expanding Feature Generation
 
@@ -234,265 +234,494 @@ df['sales_expanding_mean'] = grouped['sales'].transform(
     lambda x: x.expanding().mean()
 ).fillna(0)
 
-# Price ratio (current vs rolling average)
+# Price ratio (if price data available)
 df['sales_price_ratio'] = grouped['sales'].transform(
     lambda x: x / x.rolling(7, min_periods=1).mean().replace(0, 1)
 ).fillna(1)
 ```
 
-**Purpose:** Capture long-term trends and relative performance
+**Purpose:** Capture long-term trends and price relationships
 
-## 4. Data Splitting Phase
+## 4. Advanced Hyperparameter Optimization Phase
 
-### 4.1 Train/Validation/Test Split
+### 4.1 Data Analysis for Hyperparameter Tuning
 
 ```
-Complete Dataset → Date-Based Split → Three Datasets
+Feature Set → Data Statistics Analysis → AI Parameter Suggestion → Bayesian Optimization
 ```
 
-**Split Logic:**
+**Data Analysis Process:**
 
 ```python
-# Get unique dates and determine split points
-unique_dates = out_df['date'].sort_values().unique()
-n_dates = len(unique_dates)
+def analyze_data_for_hyperparameters(df_sample, features):
+    # Calculate dataset characteristics
+    n_rows = len(df_sample)
+    n_features = len(features)
 
-# Calculate split sizes (20% each for validation and test)
-test_size = min(90, max(1, n_dates // 5))
-val_size = min(90, max(1, n_dates // 5))
+    # Sales statistics analysis
+    sales_stats = df_sample['sales'].describe()
+    sales_range = sales_stats['max'] - sales_stats['min']
+    sales_std = sales_stats['std']
+    zero_ratio = (df_sample['sales'] == 0).mean()
 
-# Define split boundaries
-test_start = unique_dates[-test_size]
-val_start = unique_dates[-(test_size + val_size)]
+    # Dataset size categorization
+    if n_rows < 1000:
+        size_category = "small"
+        max_leaves_factor = 0.5
+        min_data_factor = 2
+    elif n_rows < 10000:
+        size_category = "medium"
+        max_leaves_factor = 0.7
+        min_data_factor = 1.5
+    else:
+        size_category = "large"
+        max_leaves_factor = 1.0
+        min_data_factor = 1.0
 
-# Create masks
-train_mask = out_df['date'] < val_start
-val_mask = (out_df['date'] >= val_start) & (out_df['date'] < test_start)
-test_mask = out_df['date'] >= test_start
-
-# Split datasets
-train_df = out_df[train_mask].copy()
-val_df = out_df[val_mask].copy()
-test_df = out_df[test_mask].copy()
+    return {
+        'size_category': size_category,
+        'n_rows': n_rows,
+        'n_features': n_features,
+        'sales_stats': sales_stats,
+        'sales_range': sales_range,
+        'sales_std': sales_std,
+        'zero_ratio': zero_ratio,
+        'max_leaves_factor': max_leaves_factor,
+        'min_data_factor': min_data_factor
+    }
 ```
 
-**Purpose:** Ensure temporal integrity and prevent data leakage
+### 4.2 AI-Powered Hyperparameter Suggestion
 
-## 5. Feature Selection Phase
-
-### 5.1 Feature Collection
-
-```
-All Features → Categorization → Selection → Final Feature Set
-```
-
-**Feature Categories:**
-
-- **Original Features**: Preserved from input data
-- **Lag Features**: Historical sales values
-- **Rolling Features**: Moving window statistics
-- **Calendar Features**: Time-based indicators
-- **Trigonometric Features**: Cyclical encodings
-- **Expanding Features**: Cumulative statistics
-
-### 5.2 AI-Powered Feature Selection (Optional)
+**Enhanced Prompt Engineering:**
 
 ```python
-def gemini_select_best_features(feature_importance_df, api_key):
-    # 1. Train quick model for feature importance
-    # 2. Send importance ranking to Gemini
-    # 3. AI selects optimal feature subset
-    # 4. Validate selected features exist
-    # 5. Return selected feature list
+def gemini_suggest_lgbm_param_ranges(df_sample, selected_features, api_key):
+    # Analyze data characteristics
+    data_analysis = analyze_data_for_hyperparameters(df_sample, selected_features)
+
+    # Create comprehensive prompt with data-driven guidance
+    prompt = f"""
+    You are an expert data scientist specializing in sales forecasting with LightGBM.
+
+    **DATA ANALYSIS:**
+    - Dataset size: {data_analysis['n_rows']} rows, {data_analysis['n_features']} features ({data_analysis['size_category']} dataset)
+    - Sales statistics: min={data_analysis['sales_stats']['min']:.2f}, max={data_analysis['sales_stats']['max']:.2f}, mean={data_analysis['sales_stats']['mean']:.2f}, std={data_analysis['sales_stats']['std']:.2f}
+    - Sales range: {data_analysis['sales_range']:.2f}, coefficient of variation: {cv_str}
+    - Zero sales ratio: {data_analysis['zero_ratio']:.1%} {'(sparse data - consider higher regularization)' if data_analysis['zero_ratio'] > 0.3 else ''}
+
+    **SALES FORECASTING CONTEXT:**
+    - Time series regression with seasonality and trends
+    - High variance data with potential outliers
+    - Balance between pattern capture and overfitting
+
+    **HYPERPARAMETER GUIDANCE:**
+    [Detailed parameter-specific guidance based on data characteristics]
+
+    **OUTPUT FORMAT:**
+    Return ONLY a valid Python dictionary for Optuna optimization.
+    """
+
+    # Send to Gemini and process response
+    return process_ai_response(prompt, api_key)
 ```
 
-**Selection Criteria:**
+**Key Improvements:**
 
-- Predictive power (importance score)
-- Feature diversity (different types)
-- Business logic (interpretability)
-- Correlation avoidance
+- **Data-Driven Analysis**: Uses actual dataset characteristics
+- **Domain-Specific Guidance**: Sales forecasting specific recommendations
+- **Adaptive Parameters**: Scales based on dataset size and characteristics
+- **Sparsity Awareness**: Adjusts regularization based on zero sales ratio
 
-## 6. Model Training Phase
-
-### 6.1 Hyperparameter Optimization
-
-```
-Data Sample → AI Analysis → Parameter Ranges → Bayesian Optimization
-```
-
-**Process:**
-
-1. **AI Parameter Suggestion**: Gemini analyzes data and suggests parameter ranges
-2. **Optuna Optimization**: Bayesian optimization finds best parameters
-3. **Validation**: Parameters tested on validation set
-4. **Selection**: Best parameters selected based on validation performance
-
-### 6.2 Multiple Model Training
-
-```
-Feature Set → Three Model Variants → Performance Comparison → Best Model Selection
-```
-
-**Model Variants:**
-
-**Model 1: Original Target**
+### 4.3 Bayesian Optimization with Optuna
 
 ```python
-# Direct sales prediction
-y_train = train_features['sales']
-model_original = lgb.train(params, train_data, ...)
+def optimize_hyperparameters(param_ranges, X_train, y_train, X_val, y_val):
+    def objective(trial):
+        # Sample parameters from AI-suggested ranges
+        params = {}
+        for param_name, param_range in param_ranges.items():
+            if isinstance(param_range, (list, tuple)):
+                if all(isinstance(x, int) for x in param_range):
+                    params[param_name] = trial.suggest_int(param_name, min(param_range), max(param_range))
+                elif all(isinstance(x, float) for x in param_range):
+                    params[param_name] = trial.suggest_float(param_name, min(param_range), max(param_range), log=True if min(param_range) > 0 else False)
+                else:
+                    params[param_name] = trial.suggest_categorical(param_name, param_range)
+
+        # Add fixed parameters
+        params.update({
+            'objective': 'regression',
+            'metric': 'rmse',
+            'verbose': -1,
+            'seed': 42
+        })
+
+        # Train model and evaluate
+        try:
+            train_data = lgb.Dataset(X_train, label=y_train)
+            valid_data = lgb.Dataset(X_val, label=y_val, reference=train_data)
+
+            model = lgb.train(
+                params,
+                train_data,
+                num_boost_round=1000,
+                valid_sets=[valid_data],
+                callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
+            )
+
+            y_pred = model.predict(X_val, num_iteration=model.best_iteration)
+            rmse = np.sqrt(mean_squared_error(y_val, y_pred))
+            return rmse
+        except Exception as e:
+            return float('inf')  # Penalize failed trials
+
+    # Run optimization
+    study = optuna.create_study(direction='minimize')
+    study.optimize(objective, n_trials=30)
+
+    return study.best_trial.params
 ```
 
-**Model 2: Log-Transformed Target**
+## 5. Model Training Phase
+
+### 5.1 Multiple Model Variants
+
+```
+Feature Set → Model 1 (Original) → Model 2 (Log-Transformed) → Model 3 (AI-Pruned) → Comparison
+```
+
+**Model Training Process:**
 
 ```python
-# Log-transformed for skewed distributions
-y_train_log = np.log1p(y_train)
-model_log = lgb.train(params, train_data_log, ...)
-# Predictions: np.expm1(y_pred_log)
+def train_multiple_models(train_features, val_features, test_features, all_feature_cols, best_params):
+    models = {}
+
+    # Model 1: Original Target (All Features)
+    X_train = train_features[all_feature_cols]
+    X_val = val_features[all_feature_cols]
+    X_test = test_features[all_feature_cols]
+    y_train = train_features['sales']
+    y_val = val_features['sales']
+    y_test = test_features['sales']
+
+    train_data = lgb.Dataset(X_train, label=y_train)
+    valid_data = lgb.Dataset(X_val, label=y_val, reference=train_data)
+
+    model_original = lgb.train(
+        best_params,
+        train_data,
+        num_boost_round=1000,
+        valid_sets=[valid_data],
+        callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
+    )
+
+    # Model 2: Log-Transformed Target
+    y_train_log = np.log1p(y_train)
+    y_val_log = np.log1p(y_val)
+
+    train_data_log = lgb.Dataset(X_train, label=y_train_log)
+    valid_data_log = lgb.Dataset(X_val, label=y_val_log, reference=train_data_log)
+
+    model_log = lgb.train(
+        best_params,
+        train_data_log,
+        num_boost_round=1000,
+        valid_sets=[valid_data_log],
+        callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
+    )
+
+    # Model 3: AI-Pruned Features (if available)
+    if valid_selected_features:
+        X_train_ai = train_features[valid_selected_features]
+        X_val_ai = val_features[valid_selected_features]
+        X_test_ai = test_features[valid_selected_features]
+
+        train_data_ai = lgb.Dataset(X_train_ai, label=y_train)
+        valid_data_ai = lgb.Dataset(X_val_ai, label=y_val, reference=train_data_ai)
+
+        model_ai = lgb.train(
+            best_params,
+            train_data_ai,
+            num_boost_round=1000,
+            valid_sets=[valid_data_ai],
+            callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
+        )
+
+    return {
+        'original': model_original,
+        'log_transformed': model_log,
+        'ai_pruned': model_ai if valid_selected_features else None
+    }
 ```
 
-**Model 3: RFE-Pruned Features**
+### 5.2 Model Evaluation and Selection
 
 ```python
-# Recursive Feature Elimination
-rfe = RFE(estimator, n_features_to_select=15)
-rfe.fit(X_train, y_train)
-selected_features = X_train.columns[rfe.support_]
-model_rfe = lgb.train(params, train_data_rfe, ...)
+def evaluate_and_select_best_model(models, X_test, y_test, all_feature_cols, valid_selected_features):
+    results = {}
+
+    # Evaluate original model
+    y_pred_original = models['original'].predict(X_test[all_feature_cols])
+    results['Original Target (All Features)'] = {
+        'MSE': mean_squared_error(y_test, y_pred_original),
+        'RMSE': np.sqrt(mean_squared_error(y_test, y_pred_original)),
+        'R²': r2_score(y_test, y_pred_original)
+    }
+
+    # Evaluate log-transformed model
+    y_pred_log = models['log_transformed'].predict(X_test[all_feature_cols])
+    y_pred_log_transformed = np.expm1(y_pred_log)
+    results['Log-Transformed Target (All Features)'] = {
+        'MSE': mean_squared_error(y_test, y_pred_log_transformed),
+        'RMSE': np.sqrt(mean_squared_error(y_test, y_pred_log_transformed)),
+        'R²': r2_score(y_test, y_pred_log_transformed)
+    }
+
+    # Evaluate AI-pruned model (if available)
+    if models['ai_pruned'] and valid_selected_features:
+        y_pred_ai = models['ai_pruned'].predict(X_test[valid_selected_features])
+        results['AI-Pruned Features'] = {
+            'MSE': mean_squared_error(y_test, y_pred_ai),
+            'RMSE': np.sqrt(mean_squared_error(y_test, y_pred_ai)),
+            'R²': r2_score(y_test, y_pred_ai)
+        }
+
+    # Select best model based on R² score
+    best_model_name = max(results, key=lambda x: results[x]['R²'])
+
+    return results, best_model_name, models[best_model_name.lower().split()[0]]
 ```
 
-### 6.3 Model Evaluation
+## 6. Prediction Generation Phase
+
+### 6.1 Recursive Forecasting Algorithm
 
 ```
-Trained Models → Test Predictions → Performance Metrics → Model Selection
+Last Observation → Feature Update → Prediction → Feature Update → Next Prediction
 ```
 
-**Evaluation Metrics:**
-
-- **MSE**: Mean Squared Error
-- **RMSE**: Root Mean Squared Error
-- **R²**: Coefficient of determination
-
-**Selection Logic:**
-
-```python
-# Compare all models and select best based on R² score
-best_model_name = max(model_results, key=lambda x: model_results[x]['R²'])
-```
-
-## 7. Prediction Generation Phase
-
-### 7.1 Recursive Forecasting
-
-```
-Last Observation → Iterative Prediction → Multi-step Forecast → Results
-```
-
-**Algorithm:**
+**Recursive Forecasting Process:**
 
 ```python
 def recursive_forecast(model, last_obs, feature_cols, steps=5):
-    preds = []
-    current = last_obs.copy()
+    predictions = []
+    current_state = last_obs.copy()
 
-    for i in range(steps):
-        # 1. Predict next value
-        X = current[feature_cols]
-        pred = model.predict(X)[0]
-        preds.append(pred)
+    for step in range(steps):
+        # 1. Make prediction using current features
+        X_current = current_state[feature_cols]
+        prediction = model.predict(X_current)[0]
+        predictions.append(prediction)
 
-        # 2. Update lag features
+        # 2. Update lag features with new prediction
         for lag in [1, 2, 3, 7, 14, 30]:
             lag_col = f'sales_lag_{lag}'
-            if lag_col in current.columns:
-                if i == 0:
-                    current[lag_col] = pred
+            if lag_col in current_state.columns:
+                if step == 0:
+                    current_state[lag_col] = prediction
                 else:
-                    current[lag_col] = preds[-min(lag, len(preds))]
+                    current_state[lag_col] = predictions[-min(lag, len(predictions))]
 
         # 3. Update rolling features
         for window in [3, 7, 14, 30]:
             roll_col = f'sales_rolling_mean_{window}'
-            if roll_col in current.columns:
-                vals = preds[-window:] if len(preds) >= window else preds
-                current[roll_col] = np.mean(vals)
+            if roll_col in current_state.columns:
+                recent_predictions = predictions[-window:] if len(predictions) >= window else predictions
+                current_state[roll_col] = np.mean(recent_predictions)
 
         # 4. Update expanding features
-        if 'sales_expanding_mean' in current.columns:
-            current['sales_expanding_mean'] = np.mean(preds)
+        if 'sales_expanding_mean' in current_state.columns:
+            current_state['sales_expanding_mean'] = np.mean(predictions)
 
-    return preds
+        # 5. Update price ratio (if applicable)
+        if 'sales_price_ratio' in current_state.columns and 'sales_rolling_mean_7' in current_state.columns:
+            rolling_mean_val = current_state['sales_rolling_mean_7'].iloc[0]
+            current_state['sales_price_ratio'] = prediction / rolling_mean_val if rolling_mean_val != 0 else 1.0
+
+    return predictions
 ```
 
-### 7.2 Prediction Modes
+### 6.2 Multi-Mode Prediction Generation
 
-**Mode 1: Item-Specific Prediction**
+**Prediction Modes:**
 
-- Select specific items
-- Generate forecasts for each item
-- Display results with item names
+1. **Item-Specific Predictions:**
 
-**Mode 2: Store-Specific Prediction**
+   ```python
+   def predict_for_items(selected_items, days, model, test_features, feature_cols, encoding_maps):
+       predictions = []
+       for item_name in selected_items:
+           item_id = get_item_id(item_name, encoding_maps)
+           item_data = test_features[test_features['item'] == item_id]
+           if len(item_data) > 0:
+               last_obs = item_data.sort_values('date').iloc[[-1]].copy()
+               preds = recursive_forecast(model, last_obs, feature_cols, steps=days)
+               predictions.append({
+                   'item': item_name,
+                   'predictions': preds
+               })
+       return predictions
+   ```
 
-- Select specific stores
-- Generate forecasts for all items in stores
-- Compare performance across locations
+2. **Store-Specific Predictions:**
 
-**Mode 3: Item-Store Combination**
+   ```python
+   def predict_for_stores(selected_stores, days, model, test_features, feature_cols, encoding_maps):
+       predictions = []
+       for store_name in selected_stores:
+           store_id = get_store_id(store_name, encoding_maps)
+           store_data = test_features[test_features['store'] == store_id]
+           store_items = store_data['item'].unique()
 
-- Select specific item-store pairs
-- Generate targeted forecasts
-- Detailed analysis for specific combinations
+           for item in store_items:
+               item_data = store_data[store_data['item'] == item]
+               last_obs = item_data.sort_values('date').iloc[[-1]].copy()
+               preds = recursive_forecast(model, last_obs, feature_cols, steps=days)
+               predictions.append({
+                   'store': store_name,
+                   'item': get_item_name(item, encoding_maps),
+                   'predictions': preds
+               })
+       return predictions
+   ```
 
-**Mode 4: Random Sampling**
+3. **Top-Selling Analysis:**
+   ```python
+   def analyze_top_selling_products(days, model, test_features, feature_cols, encoding_maps):
+       all_items = test_features['item'].unique()
+       item_predictions = []
 
-- Select random items for quick insights
-- Generate sample predictions
-- Explore data patterns
+       for item in all_items:
+           item_data = test_features[test_features['item'] == item]
+           if len(item_data) > 0:
+               last_obs = item_data.sort_values('date').iloc[[-1]].copy()
+               preds = recursive_forecast(model, last_obs, feature_cols, steps=days)
 
-**Mode 5: Top-Selling Analysis**
+               total_sales = sum(preds)
+               avg_daily_sales = total_sales / days
 
-- Forecast all items for extended period
-- Rank by total predicted sales
-- Strategic planning insights
+               item_predictions.append({
+                   'item_id': item,
+                   'item_name': get_item_name(item, encoding_maps),
+                   'total_predicted_sales': total_sales,
+                   'avg_daily_sales': avg_daily_sales,
+                   'predictions': preds
+               })
 
-## 8. Results Export Phase
+       # Sort by total predicted sales
+       item_predictions.sort(key=lambda x: x['total_predicted_sales'], reverse=True)
+       return item_predictions
+   ```
 
-### 8.1 CSV Export
+## 7. Results Processing and Export
 
-```
-Predictions → DataFrame Conversion → CSV Format → Download
-```
-
-**Export Structure:**
+### 7.1 Prediction Formatting
 
 ```python
-{
-    'prediction_type': 'specific_item',
-    'item_id': 1,
-    'item_name': 'Product A',
-    'store_id': 1,
-    'store_name': 'Store 1',
-    'day': 1,
-    'predicted_sales': 150.5,
-    'total_days': 7
-}
+def format_predictions_for_export(predictions):
+    formatted_rows = []
+
+    for pred in predictions:
+        for day, value in enumerate(pred['predictions'], 1):
+            row = {
+                'prediction_type': pred.get('type', 'unknown'),
+                'item_id': pred.get('item_id', pred.get('item')),
+                'item_name': pred.get('item_name', f"Item {pred.get('item')}"),
+                'store_id': pred.get('store_id', pred.get('store')),
+                'store_name': pred.get('store_name', f"Store {pred.get('store')}"),
+                'day': day,
+                'predicted_sales': value,
+                'total_days': len(pred['predictions'])
+            }
+            formatted_rows.append(row)
+
+    return pd.DataFrame(formatted_rows)
 ```
 
-## Data Flow Summary
+### 7.2 CSV Export
 
+```python
+def export_predictions_to_csv(predictions):
+    df = format_predictions_for_export(predictions)
+    csv_data = df.to_csv(index=False).encode('utf-8')
+    return csv_data
 ```
-CSV Upload → Column Mapping → Data Standardization → Feature Engineering →
-Data Splitting → Feature Selection → Model Training → Prediction Generation →
-Results Export
+
+## 8. Error Handling and Fallbacks
+
+### 8.1 Graceful Degradation
+
+**AI Service Failures:**
+
+```python
+def handle_ai_failure(operation, error):
+    if operation == 'column_mapping':
+        return smart_column_mapping(df)
+    elif operation == 'hyperparameter_suggestion':
+        return get_default_lgbm_params()
+    elif operation == 'feature_selection':
+        return all_feature_cols  # Use all features
+    else:
+        raise Exception(f"Unknown operation: {operation}")
 ```
 
-**Key Characteristics:**
+**Data Processing Failures:**
 
-- **Temporal Integrity**: Maintains chronological order throughout
-- **Error Handling**: Graceful degradation at each step
-- **Scalability**: Handles various data sizes and formats
-- **Flexibility**: Multiple prediction modes and configurations
-- **Robustness**: Fallback mechanisms for AI failures
+```python
+def handle_data_processing_error(error, data):
+    # Clean data and retry
+    data = data.replace([np.inf, -np.inf], np.nan)
+    data = data.fillna(0)
+    return data
+```
+
+### 8.2 Validation and Sanity Checks
+
+```python
+def validate_predictions(predictions):
+    # Check for negative predictions
+    if any(p < 0 for pred in predictions for p in pred['predictions']):
+        st.warning("Negative predictions detected - applying corrections")
+        predictions = apply_prediction_corrections(predictions)
+
+    # Check for unrealistic values
+    if any(p > 1000000 for pred in predictions for p in pred['predictions']):
+        st.warning("Unrealistically high predictions detected")
+
+    return predictions
+```
+
+## 9. Performance Monitoring
+
+### 9.1 Timing and Metrics
+
+```python
+def monitor_performance():
+    metrics = {
+        'data_processing_time': time.time() - start_time,
+        'feature_engineering_time': feature_time - data_time,
+        'model_training_time': training_time - feature_time,
+        'prediction_time': prediction_time - training_time,
+        'total_time': time.time() - start_time
+    }
+
+    return metrics
+```
+
+### 9.2 Memory Usage Tracking
+
+```python
+def track_memory_usage():
+    import psutil
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    return {
+        'rss': memory_info.rss / 1024 / 1024,  # MB
+        'vms': memory_info.vms / 1024 / 1024   # MB
+    }
+```
+
+---
+
+This comprehensive data flow ensures robust, efficient, and accurate sales forecasting with **advanced AI integration and data-driven optimization** at every step.

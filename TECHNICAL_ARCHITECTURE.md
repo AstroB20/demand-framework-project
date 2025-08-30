@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The Sales Forecasting Application is built as a modular, AI-enhanced machine learning system that combines traditional ML techniques with modern AI capabilities. The architecture follows a pipeline-based approach with multiple fallback mechanisms for robustness.
+The Sales Forecasting Application is built as a modular, AI-enhanced machine learning system that combines traditional ML techniques with modern AI capabilities. The architecture follows a pipeline-based approach with multiple fallback mechanisms for robustness and **advanced data-driven hyperparameter optimization**.
 
 ## Architecture Layers
 
@@ -55,7 +55,7 @@ The Sales Forecasting Application is built as a modular, AI-enhanced machine lea
 │                   AI Integration Layer                      │
 ├─────────────────────────────────────────────────────────────┤
 │ • Gemini API Client                                         │
-│ • Prompt Engineering                                        │
+│ • Advanced Prompt Engineering                               │
 │ • Response Parser                                           │
 │ • Error Handler                                             │
 │ • Fallback Manager                                          │
@@ -65,7 +65,7 @@ The Sales Forecasting Application is built as a modular, AI-enhanced machine lea
 **Components:**
 
 - **API Client**: Google Generative AI integration
-- **Prompt Templates**: Structured prompts for different tasks
+- **Advanced Prompt Templates**: **Data-driven prompts with domain-specific guidance**
 - **Response Processing**: JSON parsing and validation
 - **Retry Logic**: Exponential backoff for API failures
 
@@ -77,7 +77,7 @@ The Sales Forecasting Application is built as a modular, AI-enhanced machine lea
 ├─────────────────────────────────────────────────────────────┤
 │ • LightGBM Models                                          │
 │ • Feature Engineering Pipeline                              │
-│ • Hyperparameter Optimization                               │
+│ • Advanced Hyperparameter Optimization                      │
 │ • Model Evaluation Engine                                   │
 │ • Prediction Algorithms                                     │
 └─────────────────────────────────────────────────────────────┘
@@ -85,9 +85,9 @@ The Sales Forecasting Application is built as a modular, AI-enhanced machine lea
 
 **Components:**
 
-- **Model Variants**: Original, Log-transformed, RFE-pruned
+- **Model Variants**: Original, Log-transformed, AI-pruned
 - **Feature Engineering**: Lag, rolling, calendar, expanding features
-- **Optimization**: Optuna for Bayesian hyperparameter tuning
+- **Advanced Optimization**: **Data-driven hyperparameter tuning with Optuna**
 - **Evaluation**: Multiple metrics (MSE, RMSE, R²)
 
 ### 5. Data Processing Layer
@@ -190,7 +190,47 @@ class RollingFeatureStage:
 5. **Expanding Generation**: Cumulative statistics
 6. **Final Cleanup**: NaN handling, type conversion
 
-### 3. Model Training Orchestrator
+### 3. Advanced Hyperparameter Optimization System
+
+**Design Pattern:** Data-Driven Strategy with Domain Knowledge
+
+```python
+class HyperparameterOptimizer:
+    def __init__(self, data_analyzer, ai_suggester, optimizer):
+        self.data_analyzer = data_analyzer
+        self.ai_suggester = ai_suggester
+        self.optimizer = optimizer
+
+    def optimize(self, data, features):
+        # 1. Analyze data characteristics
+        data_stats = self.data_analyzer.analyze(data)
+
+        # 2. Get AI-suggested parameter ranges
+        param_ranges = self.ai_suggester.suggest_ranges(data_stats, features)
+
+        # 3. Perform Bayesian optimization
+        best_params = self.optimizer.optimize(param_ranges)
+
+        return best_params
+
+class DataAnalyzer:
+    def analyze(self, data):
+        return {
+            'size_category': self._categorize_size(len(data)),
+            'sales_stats': data['sales'].describe(),
+            'sparsity': self._calculate_sparsity(data),
+            'variance': self._calculate_variance(data)
+        }
+```
+
+**Key Features:**
+
+- **Data-Driven Analysis**: Analyzes dataset characteristics (size, sparsity, variance)
+- **Domain-Specific Guidance**: Sales forecasting specific parameter recommendations
+- **Adaptive Ranges**: Parameters scale based on data characteristics
+- **Computational Efficiency**: Balances accuracy with training time
+
+### 4. Model Training Orchestrator
 
 **Design Pattern:** Factory Pattern with Strategy Selection
 
@@ -201,325 +241,261 @@ class ModelFactory:
             return OriginalTargetModel(params)
         elif model_type == "log_transformed":
             return LogTransformedModel(params)
-        elif model_type == "rfe_pruned":
-            return RFEPrunedModel(params)
+        elif model_type == "ai_pruned":
+            return AIPrunedModel(params)
 
 class ModelOrchestrator:
-    def __init__(self, factory):
+    def __init__(self, factory, evaluator):
         self.factory = factory
+        self.evaluator = evaluator
 
-    def train_models(self, data, model_types):
-        results = {}
-        for model_type in model_types:
+    def train_and_evaluate(self, data, features):
+        models = {}
+
+        # Train multiple model variants
+        for model_type in ["original", "log_transformed", "ai_pruned"]:
             model = self.factory.create_model(model_type, params)
-            results[model_type] = model.train(data)
-        return results
-```
+            models[model_type] = self.evaluator.evaluate(model, data)
 
-**Model Variants:**
-
-- **Original Target**: Direct sales prediction
-- **Log-Transformed**: Handles skewed distributions
-- **RFE-Pruned**: Optimized feature subset
-
-### 4. Prediction Engine
-
-**Design Pattern:** Template Method Pattern
-
-```python
-class PredictionEngine:
-    def predict(self, model, data, steps):
-        # Template method
-        prepared_data = self.prepare_data(data)
-        predictions = self.generate_predictions(model, prepared_data, steps)
-        return self.format_results(predictions)
-
-    def prepare_data(self, data):
-        # Abstract method - implemented by subclasses
-        pass
-
-    def generate_predictions(self, model, data, steps):
-        # Abstract method - implemented by subclasses
-        pass
-
-    def format_results(self, predictions):
-        # Abstract method - implemented by subclasses
-        pass
-
-class RecursivePredictionEngine(PredictionEngine):
-    def generate_predictions(self, model, data, steps):
-        # Recursive forecasting implementation
-        pass
+        # Select best model
+        return self.select_best_model(models)
 ```
 
 ## Data Flow Architecture
 
-### 1. Request Flow
+### 1. Data Ingestion Flow
 
 ```
-User Action → Streamlit Event → Business Logic → AI/ML Processing → Response
+CSV Upload → Validation → Column Mapping → Standardization → Feature Engineering
 ```
 
-### 2. Error Handling Flow
+**Key Components:**
+
+- **Validation**: File format, data quality checks
+- **Mapping**: AI-powered or fallback column identification
+- **Standardization**: Convert to standard format
+- **Engineering**: Generate comprehensive feature set
+
+### 2. Model Training Flow
 
 ```
-Exception → Error Handler → Fallback Strategy → Graceful Degradation → User Notification
+Feature Set → Data Analysis → Hyperparameter Optimization → Model Training → Evaluation
 ```
 
-### 3. AI Integration Flow
+**Key Components:**
+
+- **Data Analysis**: **Comprehensive dataset characterization**
+- **Hyperparameter Optimization**: **Data-driven parameter tuning**
+- **Model Training**: Multiple model variants
+- **Evaluation**: Performance comparison and selection
+
+### 3. Prediction Flow
 
 ```
-Request → API Client → Prompt Engineering → Gemini API → Response Parsing → Validation
+Input Data → Feature Generation → Model Prediction → Post-processing → Output
 ```
 
-## Technical Decisions & Rationale
+**Key Components:**
 
-### 1. Framework Selection
+- **Feature Generation**: Real-time feature engineering
+- **Model Prediction**: Use best trained model
+- **Post-processing**: Format results for display
 
-**Streamlit:**
+## AI Integration Architecture
 
-- **Pros**: Rapid prototyping, built-in widgets, easy deployment
-- **Cons**: Limited customization, performance constraints
-- **Rationale**: Perfect for ML demo and internal tools
+### 1. Prompt Engineering Strategy
 
-**LightGBM:**
-
-- **Pros**: Fast training, good performance, handles categorical data
-- **Cons**: Less interpretable than some alternatives
-- **Rationale**: Excellent for tabular data with mixed types
-
-**Google Gemini:**
-
-- **Pros**: Advanced reasoning, structured output, cost-effective
-- **Cons**: API dependency, potential rate limits
-- **Rationale**: Best balance of capability and cost for AI features
-
-### 2. Architecture Patterns
-
-**Pipeline Pattern:**
-
-- **Why**: Modular, testable, extensible data processing
-- **Implementation**: Feature engineering stages
-
-**Strategy Pattern:**
-
-- **Why**: Multiple approaches for same problem (mapping, models)
-- **Implementation**: Column mapping strategies
-
-**Factory Pattern:**
-
-- **Why**: Create different model types dynamically
-- **Implementation**: Model creation and training
-
-**Template Method:**
-
-- **Why**: Consistent prediction interface with different algorithms
-- **Implementation**: Prediction engine variants
-
-### 3. Error Handling Strategy
-
-**Graceful Degradation:**
+**Enhanced Prompt Design:**
 
 ```python
-# Primary: AI-powered mapping
-try:
-    mapping = gemini_mapping(df)
-except Exception:
-    # Fallback: Smart keyword mapping
-    mapping = smart_mapping(df)
+class PromptEngineer:
+    def create_hyperparameter_prompt(self, data_stats, features):
+        return f"""
+        You are an expert data scientist specializing in sales forecasting with LightGBM.
+
+        **DATA ANALYSIS:**
+        - Dataset size: {data_stats['size']} rows, {len(features)} features
+        - Sales statistics: {data_stats['sales_stats']}
+        - Sparsity: {data_stats['sparsity']}
+        - Variance: {data_stats['variance']}
+
+        **SALES FORECASTING CONTEXT:**
+        - Time series regression with seasonality and trends
+        - High variance data with potential outliers
+        - Balance between pattern capture and overfitting
+
+        **HYPERPARAMETER GUIDANCE:**
+        [Detailed parameter-specific guidance based on data characteristics]
+
+        **OUTPUT FORMAT:**
+        Return ONLY a valid Python dictionary for Optuna optimization.
+        """
 ```
 
-**Retry Logic:**
+**Key Improvements:**
+
+- **Data-Driven Context**: Uses actual data statistics
+- **Domain Knowledge**: Sales forecasting specific guidance
+- **Parameter Relationships**: Explains parameter dependencies
+- **Clear Output Format**: Structured response requirements
+
+### 2. AI Response Processing
 
 ```python
-for attempt in range(MAX_RETRIES):
-    try:
-        response = api_call()
-        return response
-    except Exception:
-        time.sleep(RETRY_DELAY * (2 ** attempt))
+class AIResponseProcessor:
+    def process_hyperparameter_response(self, response):
+        try:
+            # Extract dictionary from response
+            code = self.extract_code(response)
+
+            # Validate parameter ranges
+            validated_ranges = self.validate_ranges(code)
+
+            return validated_ranges
+        except Exception as e:
+            return self.get_fallback_ranges()
 ```
 
-**User Feedback:**
-
-- Progress indicators for long operations
-- Clear error messages with suggestions
-- Fallback notifications
-
-### 4. Performance Considerations
-
-**Data Processing:**
-
-- **Chunking**: Process large datasets in chunks
-- **Caching**: Cache intermediate results
-- **Parallelization**: Use pandas vectorized operations
-
-**Model Training:**
-
-- **Early Stopping**: Prevent overfitting
-- **Feature Selection**: Reduce dimensionality
-- **Parameter Optimization**: Efficient hyperparameter search
-
-**Memory Management:**
-
-- **Lazy Loading**: Load data only when needed
-- **Garbage Collection**: Clear intermediate variables
-- **Data Types**: Use appropriate data types (int32 vs int64)
-
-## Security Considerations
-
-### 1. API Key Management
+### 3. Fallback Mechanisms
 
 ```python
-# Secure storage in Streamlit
-api_key = st.sidebar.text_input("Gemini API Key", type="password")
+class FallbackManager:
+    def __init__(self):
+        self.fallbacks = {
+            'column_mapping': SmartColumnMapping(),
+            'hyperparameters': DefaultHyperparameters(),
+            'feature_selection': AllFeaturesSelection()
+        }
 
-# Environment variable fallback
-if not api_key:
-    api_key = os.getenv('GEMINI_API_KEY')
+    def get_fallback(self, operation):
+        return self.fallbacks.get(operation)
 ```
 
-### 2. Data Privacy
+## Performance Optimization
 
-- **Local Processing**: All data processed locally
-- **No Data Storage**: No persistent storage of uploaded files
-- **Temporary Variables**: Clear sensitive data after processing
+### 1. Computational Efficiency
 
-### 3. Input Validation
+**Strategies:**
+
+- **Early Stopping**: Prevents overfitting and reduces training time
+- **Feature Selection**: Reduces dimensionality and improves speed
+- **Batch Processing**: Efficient handling of large datasets
+- **Memory Management**: Optimized data structures and cleanup
+
+### 2. Model Performance
+
+**Optimization Techniques:**
+
+- **Hyperparameter Tuning**: **Data-driven optimization with domain guidance**
+- **Cross-Validation**: Robust performance estimation
+- **Ensemble Methods**: Combine multiple model predictions
+- **Regularization**: Prevent overfitting while maintaining accuracy
+
+### 3. Scalability Considerations
+
+**Architecture Decisions:**
+
+- **Modular Design**: Easy to scale individual components
+- **Stateless Operations**: Enables horizontal scaling
+- **Caching**: Store intermediate results for reuse
+- **Async Processing**: Non-blocking operations for better UX
+
+## Security and Reliability
+
+### 1. Error Handling
+
+**Comprehensive Error Management:**
 
 ```python
-# File type validation
-if uploaded_file.type != "text/csv":
-    st.error("Please upload a CSV file")
+class ErrorHandler:
+    def handle_ai_failure(self, operation, error):
+        # Log error details
+        self.logger.error(f"AI {operation} failed: {error}")
 
-# Data size limits
-if len(df) > MAX_ROWS:
-    st.error(f"File too large. Maximum {MAX_ROWS} rows allowed")
+        # Use fallback mechanism
+        fallback = self.fallback_manager.get_fallback(operation)
+        return fallback.execute()
+
+    def handle_data_error(self, error):
+        # Validate and clean data
+        return self.data_validator.fix_data(error)
 ```
 
-## Scalability Considerations
+### 2. Data Validation
 
-### 1. Horizontal Scaling
+**Multi-Level Validation:**
 
-- **Stateless Design**: No session dependencies
-- **Containerization**: Docker deployment ready
-- **Load Balancing**: Multiple instances support
+- **Input Validation**: File format, data types, required columns
+- **Business Logic Validation**: Sales data consistency, date ranges
+- **Model Validation**: Feature quality, prediction sanity checks
 
-### 2. Vertical Scaling
+### 3. API Security
 
-- **Memory Optimization**: Efficient data structures
-- **CPU Utilization**: Parallel processing where possible
-- **GPU Support**: Future enhancement for large models
+**Security Measures:**
 
-### 3. Performance Monitoring
+- **API Key Management**: Secure storage and rotation
+- **Rate Limiting**: Prevent abuse and manage costs
+- **Input Sanitization**: Prevent injection attacks
+- **Error Masking**: Don't expose sensitive information
 
-```python
-# Timing decorators
-import time
+## Monitoring and Observability
 
-def timing_decorator(func):
-    def wrapper(*args, **kwargs):
-        start = time.time()
-        result = func(*args, **kwargs)
-        end = time.time()
-        st.write(f"{func.__name__} took {end - start:.2f} seconds")
-        return result
-    return wrapper
-```
+### 1. Performance Monitoring
 
-## Deployment Architecture
+**Key Metrics:**
 
-### 1. Local Development
+- **Training Time**: Model training duration
+- **Prediction Latency**: Time to generate predictions
+- **Memory Usage**: Resource consumption tracking
+- **Accuracy Metrics**: Model performance over time
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Streamlit     │───▶│   Local Files   │───▶│   Browser       │
-│   Development   │    │   (CSV Data)    │    │   Interface     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+### 2. Error Tracking
 
-### 2. Production Deployment
+**Error Categories:**
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Load Balancer │───▶│   Streamlit     │───▶│   File Storage  │
-│   (Optional)    │    │   Instances     │    │   (S3/GCS)      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │   Gemini API    │
-                       │   (External)    │
-                       └─────────────────┘
-```
+- **Data Errors**: Invalid input, missing values
+- **AI Errors**: API failures, parsing errors
+- **Model Errors**: Training failures, prediction errors
+- **System Errors**: Memory, network, configuration issues
 
-### 3. Containerization
+### 3. User Experience Monitoring
 
-```dockerfile
-FROM python:3.9-slim
+**UX Metrics:**
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+- **Success Rate**: Percentage of successful operations
+- **Response Time**: Time to complete user requests
+- **Error Recovery**: Ability to recover from failures
+- **User Satisfaction**: Feedback and usage patterns
 
-COPY . .
-EXPOSE 8501
+## Future Architecture Considerations
 
-CMD ["streamlit", "run", "app2.py", "--server.port=8501"]
-```
+### 1. Scalability Enhancements
 
-## Future Architecture Enhancements
+**Planned Improvements:**
 
-### 1. Microservices Architecture
+- **Microservices Architecture**: Decompose into smaller services
+- **Containerization**: Docker containers for easy deployment
+- **Load Balancing**: Distribute load across multiple instances
+- **Database Integration**: Persistent storage for models and data
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   API Gateway   │───▶│   Data Service  │───▶│   ML Service    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │                       │
-                              ▼                       ▼
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │   Cache Layer   │    │   Model Store   │
-                       └─────────────────┘    └─────────────────┘
-```
+### 2. Advanced AI Integration
 
-### 2. Event-Driven Architecture
+**Future Capabilities:**
 
-- **Event Streaming**: Real-time data processing
-- **Message Queues**: Asynchronous processing
-- **Webhooks**: External system integration
+- **Multi-Model AI**: Combine multiple AI services
+- **Real-time Learning**: Continuous model updates
+- **Automated Feature Engineering**: AI-driven feature creation
+- **Explainable AI**: Model interpretability and insights
 
-### 3. AI/ML Pipeline Enhancement
+### 3. Enterprise Features
 
-- **Model Versioning**: Track model iterations
-- **A/B Testing**: Compare model performance
-- **AutoML**: Automated model selection
-- **Ensemble Methods**: Combine multiple models
+**Business Requirements:**
 
-## Monitoring & Observability
+- **Multi-tenancy**: Support multiple organizations
+- **Role-based Access**: User permissions and security
+- **Audit Logging**: Track all operations and changes
+- **Integration APIs**: Connect with existing business systems
 
-### 1. Logging Strategy
+---
 
-```python
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def log_model_performance(model_name, metrics):
-    logger.info(f"Model {model_name}: {metrics}")
-```
-
-### 2. Metrics Collection
-
-- **Model Performance**: Accuracy, training time
-- **System Performance**: Memory usage, response time
-- **User Behavior**: Feature usage, error rates
-
-### 3. Alerting
-
-- **Model Degradation**: Performance below thresholds
-- **System Issues**: High error rates, slow responses
-- **API Limits**: Approaching rate limits
-
-This architecture provides a solid foundation for a robust, scalable, and maintainable sales forecasting application while maintaining flexibility for future enhancements.
+This architecture provides a robust, scalable, and maintainable foundation for the sales forecasting application, with **advanced AI integration and data-driven optimization** at its core.
