@@ -983,14 +983,183 @@ if uploaded_file is not None:
         for i, store in enumerate(store_names, 1):
             st.write(f"{i}. {store}")
 
-    prediction_mode = st.selectbox("Prediction mode", [
-        "Predict for specific item(s)",
-        "Predict for specific store(s)",
-        "Predict for specific item-store combination",
-        "Show sample predictions for random items",
-        "Suggest top-selling products (next 2 weeks)"
-    ])
+
+    # Default to top-selling analysis for immediate insights
+    
+    st.write("### 🏆 Top-Selling Products Analysis")
+    st.write("This will predict sales for all items over the next 2 weeks and rank them by total predicted sales.")
+    
+    # Performance mode selection
+    performance_mode = st.radio(
+        "Analysis Mode",
+        ["Fast (Top 50 items)", "Standard (All items)", "Quick Sample (Top 20 items)"],
+        help="Choose analysis speed vs. coverage"
+    )
+    
+    # User can specify time period (max 2 weeks = 14 days)
+    days = st.number_input("Forecast period (days)", min_value=1, max_value=14, value=14, 
+                          help="Maximum 2 weeks (14 days)")
+    
+    if st.button("Analyze Top-Selling Products"):
+        with st.spinner("Predicting sales for all items..."):
+            # Get all unique items
+            all_items = test_features['item'].unique()
+            
+            # Performance optimization based on selected mode
+            if performance_mode == "Fast (Top 50 items)":
+                if len(all_items) > 50:
+                    st.info(f"📊 Fast Mode: Analyzing top 50 items out of {len(all_items)} total items")
+                    all_items = all_items[:50]
+            elif performance_mode == "Quick Sample (Top 20 items)":
+                if len(all_items) > 20:
+                    st.info(f"⚡ Quick Mode: Analyzing top 20 items out of {len(all_items)} total items")
+                    all_items = all_items[:20]
+            else:  # Standard mode
+                st.info(f"📊 Standard Mode: Analyzing all {len(all_items)} items")
+            
+            # Store results for each item
+            item_predictions = []
+            
+            # Progress bar
+            progress_bar = st.progress(0)
+            progress_text = st.empty()
+            
+            # Performance optimization: Batch processing
+            batch_size = 10
+            for batch_start in range(0, len(all_items), batch_size):
+                batch_end = min(batch_start + batch_size, len(all_items))
+                batch_items = all_items[batch_start:batch_end]
+                
+                for idx, item in enumerate(batch_items):
+                    progress_text.text(f"Predicting for item {batch_start + idx + 1}/{len(all_items)}")
+                    
+                    # Get last observation for this item
+                    item_data = test_features[test_features['item'] == item]
+                    if len(item_data) > 0:
+                        last_obs = item_data.sort_values('date').iloc[[-1]].copy()
+                        
+                        # Make predictions
+                        preds = recursive_forecast(best_model, last_obs, best_feature_cols, steps=days)
+                        
+                        # Calculate total predicted sales
+                        total_predicted_sales = sum(preds)
+                        avg_daily_sales = total_predicted_sales / days
+                        
+                        item_name = str(encoding_maps['item'].get(item, f"Item {item}"))
+                        
+                        item_predictions.append({
+                            'item_id': item,
+                            'item_name': item_name,
+                            'total_predicted_sales': total_predicted_sales,
+                            'avg_daily_sales': avg_daily_sales,
+                            'predictions': preds
+                        })
+                    
+                    # Update progress
+                    progress_bar.progress((batch_start + idx + 1) / len(all_items))
+            
+            progress_text.text("Analysis complete!")
+            
+            # Sort by total predicted sales (descending)
+            item_predictions.sort(key=lambda x: x['total_predicted_sales'], reverse=True)
+            
+            # Display results
+            st.write(f"### 📊 Top-Selling Products (Next {days} Days)")
+            
+            # Create summary dataframe
+            summary_data = []
+            for i, item_pred in enumerate(item_predictions[:20]):  # Show top 20
+                summary_data.append({
+                    'Rank': i + 1,
+                    'Item Name': item_pred['item_name'],
+                    'Total Predicted Sales': f"{item_pred['total_predicted_sales']:.0f}",
+                    'Avg Daily Sales': f"{item_pred['avg_daily_sales']:.1f}",
+                    'Item ID': item_pred['item_id']
+                })
+            
+            summary_df = pd.DataFrame(summary_data)
+            st.dataframe(summary_df, use_container_width=True)
+            
+            # Show detailed analysis for top 5
+            st.write("### 📈 Detailed Analysis - Top 5 Products")
+            
+            for i, item_pred in enumerate(item_predictions[:5]):
+                with st.expander(f"#{i+1} - {item_pred['item_name']} (Total: {item_pred['total_predicted_sales']:.0f} units)"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write(f"**Total Predicted Sales:** {item_pred['total_predicted_sales']:.0f} units")
+                        st.write(f"**Average Daily Sales:** {item_pred['avg_daily_sales']:.1f} units")
+                        st.write(f"**Item ID:** {item_pred['item_id']}")
+                    
+                    with col2:
+                        # Create a simple line chart of predictions
+                        pred_df = pd.DataFrame({
+                            'Day': range(1, days + 1),
+                            'Predicted Sales': item_pred['predictions']
+                        })
+                        st.line_chart(pred_df.set_index('Day'))
+                    
+                    # Show weekly breakdown
+                    weekly_data = []
+                    for week in range(0, days, 7):
+                        week_end = min(week + 7, days)
+                        week_sales = sum(item_pred['predictions'][week:week_end])
+                        weekly_data.append({
+                            'Week': f"Week {(week//7)+1}",
+                            'Sales': week_sales
+                        })
+                    
+                    st.write("**Weekly Breakdown:**")
+                    weekly_df = pd.DataFrame(weekly_data)
+                    st.dataframe(weekly_df)
+            
+            # Insights section
+            st.write("### 💡 Key Insights")
+            
+            if len(item_predictions) > 0:
+                top_item = item_predictions[0]
+                bottom_item = item_predictions[-1]
+                
+                st.write(f"**🏆 Best Performer:** {top_item['item_name']}")
+                st.write(f"   - Predicted to sell {top_item['total_predicted_sales']:.0f} units")
+                st.write(f"   - Average of {top_item['avg_daily_sales']:.1f} units per day")
+                
+                st.write(f"**📉 Lowest Performer:** {bottom_item['item_name']}")
+                st.write(f"   - Predicted to sell {bottom_item['total_predicted_sales']:.0f} units")
+                st.write(f"   - Average of {bottom_item['avg_daily_sales']:.1f} units per day")
+                
+                # Calculate some statistics
+                total_sales = sum(item['total_predicted_sales'] for item in item_predictions)
+                avg_sales = total_sales / len(item_predictions)
+                
+                st.write(f"**📊 Overall Statistics:**")
+                st.write(f"   - Total predicted sales across all items: {total_sales:.0f} units")
+                st.write(f"   - Average predicted sales per item: {avg_sales:.0f} units")
+                st.write(f"   - Top item contributes {((top_item['total_predicted_sales']/total_sales)*100):.1f}% of total sales")
+            
+            # Add to all_predictions for CSV download
+            for item_pred in item_predictions:
+                all_predictions.append({
+                    'type': 'top_selling_analysis',
+                    'item': item_pred['item_id'],
+                    'item_name': item_pred['item_name'],
+                    'store': 'all',
+                    'days': days,
+                    'predictions': item_pred['predictions']
+                })
+    
+    # Initialize predictions list for CSV download
     all_predictions = []
+    
+    # Additional prediction modes in expandable section
+    with st.expander("🔮 Other Prediction Modes"):
+        prediction_mode = st.selectbox("Prediction mode", [
+            "Predict for specific item(s)",
+            "Predict for specific store(s)",
+            "Predict for specific item-store combination",
+            "Show sample predictions for random items"
+        ])
     if prediction_mode == "Predict for specific item(s)":
         selected_items = st.multiselect("Select item(s)", item_names)
         days = st.number_input("How many days to forecast?", min_value=1, max_value=30, value=7)
