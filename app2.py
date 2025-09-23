@@ -1137,7 +1137,7 @@ if uploaded_file is not None:
                 st.write(f"   - Total predicted sales across all items: {total_sales:.0f} units")
                 st.write(f"   - Average predicted sales per item: {avg_sales:.0f} units")
                 st.write(f"   - Top item contributes {((top_item['total_predicted_sales']/total_sales)*100):.1f}% of total sales")
-            
+            all_predictions = []
             # Add to all_predictions for CSV download
             for item_pred in item_predictions:
                 all_predictions.append({
@@ -1256,7 +1256,7 @@ if uploaded_file is not None:
         # User can specify time period (max 2 weeks = 14 days)
         days = st.number_input("Forecast period (days)", min_value=1, max_value=14, value=14, 
                               help="Maximum 2 weeks (14 days)")
-        
+        all_predictions = []
         if st.button("Analyze Top-Selling Products"):
             with st.spinner("Predicting sales for all items..."):
                 # Get all unique items
