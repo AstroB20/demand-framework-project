@@ -10,7 +10,7 @@ lightgbm>=3.3.0
 streamlit>=1.25.0
 
 # AI Integration
-google-generativeai>=0.3.0
+google-generativeai>=0.8.6
 
 # Hyperparameter Optimization (Optional)
 optuna>=3.0.0

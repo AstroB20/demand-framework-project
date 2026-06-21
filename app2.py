@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Gemini setup constants
-MODEL_NAME = "gemini-1.5-flash"
+MODEL_NAME = "gemini-3.5-flash"
 MAX_RETRIES = 3
 RETRY_DELAY = 2
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')  # Load from environment variable, default to empty string
@@ -582,7 +582,35 @@ def save_predictions_to_csv(predictions):
 
 # --- Streamlit App Logic ---
 st.set_page_config(page_title="Sales Forecasting App", layout="wide")
-st.title("🛒 Sales Forecasting Streamlit App")
+
+col_title, col_info = st.columns([10, 1])
+with col_title:
+    st.title("🛒 Sales Forecasting Streamlit App")
+with col_info:
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.popover("ℹ️"):
+        st.markdown("""
+### About this App
+
+A comprehensive **sales forecasting** tool powered by **LightGBM** and **Google Gemini AI**.
+
+**What it does:**
+- Accepts any CSV with sales data — columns are mapped automatically
+- Engineers lag, rolling, calendar, and categorical features
+- Trains and compares three LightGBM models (original, log-transformed, AI-pruned)
+- Forecasts future sales per item, store, or combination
+- Ranks top-selling products over a configurable horizon
+
+**AI features (requires Gemini API key):**
+- 🤖 Intelligent column mapping from raw CSV headers
+- 🤖 Feature selection based on importance analysis
+- 🤖 Hyperparameter range suggestion with Optuna tuning
+
+**Demo dataset:**
+The bundled *superMarket.csv* contains Indian retail transactions (2016–2019) with categories, cities, regions, sales, discounts, and profit.
+
+**Tech stack:** Streamlit · LightGBM · scikit-learn · Optuna · Google Gemini
+        """)
 
 # Sidebar configuration
 st.sidebar.header("🔧 Configuration")
@@ -609,8 +637,17 @@ else:
 st.sidebar.header("1. Upload Data")
 uploaded_file = st.sidebar.file_uploader("Upload your sales data CSV", type=["csv"])
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
+if "run_demo" not in st.session_state:
+    st.session_state.run_demo = False
+
+if uploaded_file is not None or st.session_state.run_demo:
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+        st.session_state.run_demo = False
+    else:
+        demo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "superMarket.csv")
+        df = pd.read_csv(demo_path)
+        st.info("🛒 **Demo Mode** — running with the bundled superMarket dataset. Upload your own CSV to override.")
     st.write("## Data Preview", df.head())
     st.success("Data loaded! Proceed to model training and prediction.")
 
@@ -1393,4 +1430,10 @@ if uploaded_file is not None:
         csv = pred_df.to_csv(index=False).encode('utf-8')
         st.download_button("Download predictions as CSV", data=csv, file_name="predictions.csv", mime="text/csv")
 else:
-    st.info("Please upload a CSV file to get started.") 
+    st.info("Please upload a CSV file to get started.")
+    st.markdown("---")
+    st.subheader("👋 New here? Try the demo")
+    st.write("Click below to run the app instantly with the bundled supermarket sales dataset.")
+    if st.button("▶️ Run Demo", type="primary", use_container_width=False):
+        st.session_state.run_demo = True
+        st.rerun()
